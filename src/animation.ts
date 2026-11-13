@@ -102,6 +102,44 @@ export function applyLayerEdit(layer:Layer,patch:Partial<Layer>,time:number,auto
   return Object.keys(base).length?{...next,...base}:next
 }
 
+export const supportedChannels=(layer:Layer)=>channelNames.filter(key=>key!=='fontSize'||layer.kind==='text')
+export type PoseDraft = Partial<Pick<Layer,Channel>>
+
+export function recordPose(layer:Layer,time:number,draft:PoseDraft,easing:Easing):Layer {
+  const pose={...evaluate(layer,time),...draft}
+  return supportedChannels(layer).reduce((next,key)=>setKey(next,key,time,pose[key],atKey(layer,key,time)?.easing??easing),layer)
+}
+
+export function keysAt(layer:Layer,frame:number):Channel[] {
+  return channelNames.filter(key=>atKey(layer,key,frame/30))
+}
+
+export function moveKeys(layer:Layer,from:number,to:number,keys:Channel[]):Layer {
+  if(layer.locked || from===to || !inClip(layer,to/30) || !keys.length)return layer
+  if(keys.some(key=>!atKey(layer,key,from/30)||atKey(layer,key,to/30)))return layer
+  const tracks:Tracks={...layer.tracks}
+  const start=toFrame(layer.start)
+  for(const key of keys){
+    const track=layer.tracks?.[key]
+    if(!track)continue
+    Object.assign(tracks,{[key]:track.map(entry=>entry.frame===from-start?{...entry,frame:to-start}:entry).sort((a,b)=>a.frame-b.frame)})
+  }
+  return {...layer,tracks}
+}
+
+export function splitDraft(layer:Layer,patch:PoseDraft,time:number,auto:boolean){
+  const immediate={...patch}, pending:PoseDraft={}
+  if(!auto && inClip(layer,time)){
+    for(const key of channelNames){
+      if(patch[key]!==undefined && layer.tracks?.[key]?.length && !atKey(layer,key,time)){
+        Object.assign(pending,{[key]:patch[key]})
+        delete immediate[key]
+      }
+    }
+  }
+  return {immediate,pending}
+}
+
 export type Position = Pick<Layer,'x'|'y'>
 
 export function setPositionKey(layer:Layer,time:number,position:Position,easing?:Easing):Layer {
@@ -124,14 +162,15 @@ export function editPosition(layer:Layer,time:number,position:Position,auto:bool
   return {layer,position,saved:false}
 }
 
-export function applyCanvasEdit(layer:Layer,before:Layer,after:Layer,time:number,auto:boolean):PositionEdit {
+export function applyCanvasEdit(layer:Layer,before:Layer,after:Layer,time:number,auto:boolean):PositionEdit & {pending:PoseDraft; changed:Channel[]} {
   const patch:Partial<Layer>={}
   for(const key of channelNames){
     if(key!=='x' && key!=='y' && before[key]!==after[key])Object.assign(patch,{[key]:after[key]})
   }
-  const next=applyLayerEdit(layer,patch,time,auto)
-  if(before.x===after.x && before.y===after.y)return {layer:next}
-  return editPosition(next,time,{x:after.x,y:after.y},auto)
+  const {immediate,pending}=splitDraft(layer,patch,time,auto)
+  const next=applyLayerEdit(layer,immediate,time,auto)
+  const result=before.x===after.x && before.y===after.y?{layer:next}:editPosition(next,time,{x:after.x,y:after.y},auto)
+  return {...result,pending,changed:channelNames.filter(key=>patch[key]!==undefined)}
 }
 
 export function keyTimes(layer:Layer):number[] {

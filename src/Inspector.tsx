@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Layers3, SlidersHorizontal } from 'lucide-react'
 import AnimationPanel, { type AnimationControls } from './AnimationPanel'
-import { atKey, evaluate, inClip, type Channel } from './animation'
+import { evaluate, inClip, type Channel } from './animation'
 import { clamp, fonts, frame, type Layer, type Project } from './model'
 
 function NumberField({label,value,min,max,step=1,disabled=false,change}:{label:string;value:number;min:number;max:number;step?:number;disabled?:boolean;change:(n:number)=>void}){
@@ -14,7 +14,7 @@ function NumberField({label,value,min,max,step=1,disabled=false,change}:{label:s
 }
 export default function Inspector({project,layer,count,editLayer,editProject,...animation}:{project:Project;layer?:Layer;count:number;editLayer:(p:Partial<Layer>)=>void;editProject:(p:Partial<Project>)=>void}&AnimationControls){
   const pose=layer && {...evaluate(layer,animation.time),...animation.pendingPosition}
-  const editable=(key:Channel)=>(key==='x'||key==='y') ? !!layer && inClip(layer,animation.time) : !layer?.tracks?.[key]?.length || (inClip(layer,animation.time) && (animation.autoKey || !!atKey(layer,key,animation.time)))
+  const editable=(key:Channel)=>!layer?.tracks?.[key]?.length || inClip(layer,animation.time)
   const [custom,setCustom]=useState(false)
   const [tab,setTab]=useState<'layer'|'canvas'>('layer')
   const ratio=project.width*9===project.height*16?'16:9':project.width*16===project.height*9?'9:16':project.width===project.height?'1:1':'custom'
@@ -39,7 +39,7 @@ export default function Inspector({project,layer,count,editLayer,editProject,...
     </>:layer && count===1?<fieldset key={layer.id} disabled={layer.locked}>
       <section className="layer-heading"><Layers3 size={17}/><input aria-label="レイヤー名" key={layer.name} defaultValue={layer.name} onBlur={e=>{if(e.target.value.trim() && e.target.value!==layer.name)editLayer({name:e.target.value.trim()})}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}}/></section>
       <section><h3>トランスフォーム</h3><div className="field-pair">{number('X 座標','x',-16384,16384)}{number('Y 座標','y',-16384,16384)}
-      {number('幅','w',8,8192)}{number('高さ','h',8,8192)}{number('回転 (°)','rotation',-3600,3600)}{number('不透明度 (%)','opacity',0,100)}</div></section>
+      {number('幅','w',8,8192)}{number('高さ','h',8,8192)}{number('回転 (°)','rotation',-Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER)}{number('不透明度 (%)','opacity',0,100)}</div></section>
       <AnimationPanel layer={layer} {...animation}/>
       <section><h3>{layer.kind==='text'?'テキスト':'スタイル'}</h3>
         {layer.kind==='text' && <>

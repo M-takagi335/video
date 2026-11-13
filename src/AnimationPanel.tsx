@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Diamond, Trash2 } from 'lucide-react'
-import { atKey, channels, channelNames, easings, inClip, toFrame, type Channel, type Easing, type Position } from './animation'
+import { atKey, channels, supportedChannels, easings, inClip, toFrame, type Channel, type Easing, type PoseDraft } from './animation'
 import { type Layer } from './model'
 
 export interface AnimationControls {
   time:number
-  pendingPosition?:Partial<Position>
+  pendingPosition?:PoseDraft
+  channel:Channel
+  setChannel:(channel:Channel)=>void
+  recordAll:(easing:Easing)=>void
   autoKey:boolean
   setAutoKey:(active:boolean)=>void
   record:(key:Channel,easing?:Easing)=>void
@@ -14,11 +17,11 @@ export interface AnimationControls {
   changeEasing:(key:Channel,easing:Easing)=>void
   seek:(time:number)=>void
 }
-export default function AnimationPanel({layer,time,pendingPosition,autoKey,setAutoKey,record,recordPosition,erase,changeEasing,seek}:{layer:Layer}&AnimationControls){
-  const [channel,setChannel]=useState<Channel>('x')
+export default function AnimationPanel({layer,time,pendingPosition,autoKey,setAutoKey,record,recordPosition,recordAll,channel:setChannelValue,setChannel,erase,changeEasing,seek}:{layer:Layer}&AnimationControls){
+  const channel=setChannelValue==='fontSize' && layer.kind!=='text'?'x':setChannelValue
   const [defaultEasing,setDefaultEasing]=useState<Easing>('Linear')
   const keyframe=atKey(layer,channel,time)
-  const pendingAxis=(channel==='x'||channel==='y') && pendingPosition?.[channel]!==undefined
+  const pendingAxis=pendingPosition?.[channel]!==undefined
   const frame=toFrame(time), start=toFrame(layer.start), end=toFrame(layer.end)
   const frames=(layer.tracks?.[channel]??[]).map(key=>start+key.frame).filter(frame=>frame>=start&&frame<end)
   const previous=frames.filter(value=>value<frame).at(-1)
@@ -27,7 +30,7 @@ export default function AnimationPanel({layer,time,pendingPosition,autoKey,setAu
     <h3>アニメーション</h3>
     <label className="checkbox"><input type="checkbox" checked={autoKey} onChange={e=>setAutoKey(e.target.checked)}/>キーフレームを自動登録</label>
     <label className="field"><span>対象プロパティ</span><select aria-label="対象プロパティ" value={channel} onChange={e=>setChannel(e.target.value as Channel)}>
-      {channelNames.filter(key=>key!=='fontSize'||layer.kind==='text').map(key=><option key={key} value={key}>{channels[key]}</option>)}
+      {supportedChannels(layer).map(key=><option key={key} value={key}>{channels[key]}</option>)}
     </select></label>
     <label className="field"><span>イージング</span><select aria-label="イージング" value={keyframe?.easing??defaultEasing} onChange={e=>{
       const value=e.target.value as Easing
@@ -41,8 +44,9 @@ export default function AnimationPanel({layer,time,pendingPosition,autoKey,setAu
       <button type="button" aria-label="キーフレームを削除" disabled={!keyframe} onClick={()=>erase(channel)}><Trash2/></button>
       <button type="button" aria-label="次のキーフレーム" disabled={next===undefined} onClick={()=>seek(next!/30)}><ChevronRight/></button>
     </div>
-    <button type="button" className="position-key" disabled={!inClip(layer,time)||(!pendingPosition&&!!atKey(layer,'x',time)&&!!atKey(layer,'y',time))}
+    <button type="button" className="position-key" disabled={!inClip(layer,time)||(pendingPosition?.x===undefined&&pendingPosition?.y===undefined&&!!atKey(layer,'x',time)&&!!atKey(layer,'y',time))}
       onClick={()=>recordPosition(defaultEasing)}><Diamond/>位置（X・Y）のキーを追加</button>
-    <p className="animation-hint">{pendingPosition?'位置が未登録です。「位置（X・Y）のキーを追加」で確定します。':!inClip(layer,time)?'再生ヘッドをクリップ内に移動してください。':keyframe?'この位置のプロパティを編集できます。':'イージングは選んだキーに到達する区間に適用されます。'}</p>
+    <button type="button" className="position-key" disabled={!inClip(layer,time)} onClick={()=>recordAll(defaultEasing)}><Diamond/>全項目にキーを追加</button>
+    <p className="animation-hint">{pendingPosition?'未登録の変更があります。個別キーまたは一括登録で確定してください。':!inClip(layer,time)?'再生ヘッドをクリップ内に移動してください。':keyframe?'この位置のプロパティを編集できます。':'イージングは選んだキーに到達する区間に適用されます。'}</p>
   </section>
 }

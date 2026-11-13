@@ -39,7 +39,7 @@ interface Props {
 }
 export default function Canvas({project,selected,time,grid,snap,select,preview,finish,layers,pause}:Props){
   const svg=useRef<SVGSVGElement>(null)
-  const gesture=useRef<{start:DOMPoint; layer:Layer; initial:Layer[]; ids:string[]; mode:Mode; sx:number; sy:number; time:number; result?:CanvasEdit} | null>(null)
+  const gesture=useRef<{start:DOMPoint; layer:Layer; initial:Layer[]; ids:string[]; mode:Mode; sx:number; sy:number; time:number; lastAngle?:number; rotationDelta:number; result?:CanvasEdit} | null>(null)
   const {width,height}=project
   const point=(e:PointerEvent)=>new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.current!.getScreenCTM()!.inverse())
   function begin(e:PointerEvent,l:Layer,mode:Mode,sx=1,sy=1){
@@ -48,7 +48,7 @@ export default function Canvas({project,selected,time,grid,snap,select,preview,f
     if(mode==='move' && (e.shiftKey || !selected.includes(l.id))) select(l.id,e.shiftKey)
     if(l.locked || e.shiftKey)return
     pause()
-    gesture.current={start:point(e),layer:l,initial:layers,ids:selected.includes(l.id)?selected:[l.id],mode,sx,sy,time}
+    gesture.current={start:point(e),layer:l,initial:layers,ids:selected.includes(l.id)?selected:[l.id],mode,sx,sy,time,rotationDelta:0}
     svg.current!.setPointerCapture(e.pointerId)
   }
   function move(e:PointerEvent){
@@ -62,13 +62,18 @@ export default function Canvas({project,selected,time,grid,snap,select,preview,f
     const w=clamp(l.w+localX*g.sx,8,8192), h=clamp(l.h+localY*g.sy,8,8192)
     const shiftX=(w-l.w)*g.sx/2, shiftY=(h-l.h)*g.sy/2
     const angle=(v:DOMPoint)=>Math.atan2(v.y-l.y,v.x-l.x)*180/Math.PI
+    if(g.mode==='rotate'){
+      const nextAngle=angle(p)
+      g.rotationDelta+=(nextAngle-(g.lastAngle??angle(g.start))+540)%360-180
+      g.lastAngle=nextAngle
+    }
     const deltaX=Math.abs(dx)<1e-6?0:snap?Math.round((l.x+dx)/20)*20-l.x:Math.round(dx)
     const deltaY=Math.abs(dy)<1e-6?0:snap?Math.round((l.y+dy)/20)*20-l.y:Math.round(dy)
     const after=g.initial.map(item=>{
       if(item.locked)return item
       if(g.mode==='move' && g.ids.includes(item.id))return {...item,x:item.x+deltaX,y:item.y+deltaY}
       if(item.id!==l.id)return item
-      if(g.mode==='rotate')return {...item,rotation:Math.round(l.rotation+(angle(p)-angle(g.start)+540)%360-180)}
+      if(g.mode==='rotate')return {...item,rotation:Math.round(l.rotation+g.rotationDelta)}
       if(g.mode==='resize')return {...item,w:Math.round(w),h:Math.round(h),
         x:Math.round(l.x+shiftX*Math.cos(theta)-shiftY*Math.sin(theta)),
         y:Math.round(l.y+shiftX*Math.sin(theta)+shiftY*Math.cos(theta)),

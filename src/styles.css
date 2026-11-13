@@ -112,7 +112,11 @@ textarea{resize:vertical;min-height:53px;margin-bottom:8px}
 .key-add{flex:1;background:#322746;color:#dfccff;font-size:11px}
 .position-key{width:100%;margin-top:6px;background:#322746;color:#dfccff;font-size:11px}
 .animation-hint{margin:9px 0 0;color:var(--soft);font-size:10px;line-height:1.5}
-.key-marker{position:absolute;top:19px;width:10px;height:10px;padding:0;border-radius:2px;transform:translateX(-50%) rotate(45deg);background:#d1aeff;border:1px solid #372449;z-index:1}
+.key-slot{position:absolute;top:19px;z-index:1}
+.key-count{position:absolute;left:5px;top:-6px;font-size:9px;color:#fff0ff;pointer-events:none}
+.axis-marker{position:absolute;top:-8px;left:-4px;width:8px;height:8px;padding:0;border-radius:50%;background:#65d7e3;border:1px solid #123c45;cursor:ew-resize}
+.key-ghost{position:absolute;top:18px;height:12px;border-left:2px dashed #fff;pointer-events:none;z-index:2}
+.key-marker{position:absolute;top:0;cursor:ew-resize;width:10px;height:10px;padding:0;border-radius:2px;transform:translateX(-50%) rotate(45deg);background:#d1aeff;border:1px solid #372449;z-index:1}
 .key-marker:hover:not(:disabled),.key-marker.current{background:#fff3ff}
 .playhead:before{content:"";position:absolute;top:0;left:-5px;width:9px;height:9px;background:#ba9aff;clip-path:polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)}
 @media(max-width:1050px){.workspace{grid-template-columns:155px minmax(220px,1fr) 220px}.library-content{padding:13px 8px}.shape-grid{gap:4px}}

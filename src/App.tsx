@@ -6,7 +6,7 @@ import Timeline from './Timeline'
 import { useProject } from './useProject'
 import { clamp, frame, makeLayer, shapes, timecode, type Kind, type Layer, type Project } from './model'
 import { editProject, reorder } from './editor'
-import { applyCanvasEdit, applyLayerEdit, atKey, editPosition, evaluate, keyTimes, offsetPosition, removeKey, setKey, setPositionKey, toFrame, withTrimmedStart, type Channel, type Easing, type Position } from './animation'
+import { applyCanvasEdit, applyLayerEdit, atKey, editPosition, evaluate, keyTimes, recordPose, splitDraft, channelNames, offsetPosition, removeKey, setKey, setPositionKey, toFrame, withTrimmedStart, type Channel, type Easing, type PoseDraft } from './animation'
 import { usePlayback } from './usePlayback'
 
 const icons={circle:Circle,ellipse:Circle,rect:Square,rounded:Square,triangle:Triangle,polygon:Shapes,star:Star,line:Minus,arrow:MoveUpRight}
@@ -15,7 +15,7 @@ export default function App(){
   const [selected,setSelected]=useState(['title'])
   const [draft,setDraft]=useState<Layer[]>()
   const [canvasDraft,setCanvasDraft]=useState<Layer[]>()
-  const [positions,setPositions]=useState<Map<string,Partial<Position>>>(()=>new Map())
+  const [positions,setPositions]=useState<Map<string,PoseDraft>>(()=>new Map())
   const {current,playing,pause,seek:seekPlayback,toggle:togglePlayer}=usePlayback(project.duration)
   const seek=(time:number)=>{
     if(toFrame(clamp(time,0,project.duration))!==toFrame(current))setPositions(new Map())
@@ -25,6 +25,7 @@ export default function App(){
   const togglePlayback=()=>{setPositions(new Map());togglePlayer()}
   const undo=()=>{setPositions(new Map());undoProject()}
   const redo=()=>{setPositions(new Map());redoProject()}
+  const [channel,setChannel]=useState<Channel>('x')
   const [autoKey,setAutoKey]=useState(false)
   const [grid,setGrid]=useState(false)
   const [snap,setSnap]=useState(false)
@@ -52,8 +53,13 @@ export default function App(){
       const pose=changed.get(layer.id)
       if(!pose)return layer
       const result=applyCanvasEdit(layer,pose.before,pose.after,edit.time,autoKey)
-      if(result.saved)pending.delete(layer.id)
-      else if(result.position)pending.set(layer.id,result.position)
+      const values={...pending.get(layer.id)}
+      for(const key of result.changed)delete values[key]
+      if(result.saved){delete values.x;delete values.y}
+      else if(result.position)Object.assign(values,result.position)
+      Object.assign(values,result.pending)
+      if(Object.keys(values).length)pending.set(layer.id,values)
+      else pending.delete(layer.id)
       return result.layer
     })
     return {layers,pending}
@@ -82,7 +88,8 @@ export default function App(){
     pause()
     if(selectedLayer && (patch.x!==undefined || patch.y!==undefined)){
       const id=selectedLayer.id
-      const pending=positions.get(id)
+      const draft=positions.get(id)
+      const pending=draft?.x!==undefined||draft?.y!==undefined?draft:undefined
       const key=patch.x!==undefined?'x':'y'
       if(!autoKey && !pending && atKey(selectedLayer,key,current)){
         updateSelected(layer=>applyLayerEdit(layer,patch,current,false))
@@ -94,13 +101,32 @@ export default function App(){
       if(result.layer!==selectedLayer)updateSelected(layer=>editPosition(layer,current,position,autoKey).layer)
       if(result.position)setPositions(previous=>{
         const next=new Map(previous)
-        if(result.saved)next.delete(id)
-        else next.set(id,{...next.get(id),[key]:position[key]})
+        const values={...next.get(id)}
+        if(result.saved){delete values.x;delete values.y}
+        else values[key]=position[key]
+        if(Object.keys(values).length)next.set(id,values)
+        else next.delete(id)
         return next
       })
       return
     }
     if(patch.start!==undefined || patch.end!==undefined)setPositions(new Map())
+    if(selectedLayer){
+      const id=selectedLayer.id
+      const {immediate,pending}=splitDraft(selectedLayer,patch,current,autoKey)
+      const edited=channelNames.filter(key=>patch[key]!==undefined)
+      if(edited.length)setPositions(previous=>{
+        const next=new Map(previous)
+        const values={...next.get(id)}
+        for(const key of edited)delete values[key]
+        Object.assign(values,pending)
+        if(Object.keys(values).length)next.set(id,values)
+        else next.delete(id)
+        return next
+      })
+      patch=immediate
+      if(!Object.keys(patch).length)return
+    }
     updateSelected(l=>{
       const updated=patch.start===undefined?l:withTrimmedStart(l,patch.start)
       return applyLayerEdit(updated,patch,current,autoKey)
@@ -121,13 +147,13 @@ export default function App(){
     pause()
     const pending=selectedLayer&&positions.get(selectedLayer.id)
     updateSelected(l=>setKey(l,key,current,{...evaluate(l,current),...pending}[key],easing))
-    if(selectedLayer && pending && (key==='x'||key==='y')){
+    if(selectedLayer && pending?.[key]!==undefined){
       const id=selectedLayer.id
       setPositions(previous=>{
         const next=new Map(previous)
         const position={...next.get(id)}
         delete position[key]
-        if(position.x===undefined && position.y===undefined)next.delete(id)
+        if(!Object.keys(position).length)next.delete(id)
         else next.set(id,{...next.get(id),[key]:position[key]})
         return next
       })
@@ -139,6 +165,22 @@ export default function App(){
     if(!id)return
     const pending=positions.get(id)
     updateSelected(layer=>setPositionKey(layer,current,{...evaluate(layer,current),...pending},easing))
+    setPositions(previous=>{
+      const next=new Map(previous)
+      const values={...next.get(id)}
+      delete values.x
+      delete values.y
+      if(Object.keys(values).length)next.set(id,values)
+      else next.delete(id)
+      return next
+    })
+  }
+  function recordAll(easing:Easing){
+    pause()
+    if(!selectedLayer)return
+    const id=selectedLayer.id
+    const pending=positions.get(id)??{}
+    updateSelected(layer=>recordPose(layer,current,pending,easing))
     setPositions(previous=>{
       const next=new Map(previous)
       next.delete(id)
@@ -259,9 +301,9 @@ export default function App(){
         </div>
       </section>
       <Inspector project={project} layer={selectedLayer} count={selection.length} editLayer={editLayer} editProject={change}
-        time={current} pendingPosition={selectedLayer&&positions.get(selectedLayer.id)} autoKey={autoKey} setAutoKey={setAutoKey} record={record} recordPosition={recordPosition} erase={erase} changeEasing={changeEasing} seek={seek}/>
+        time={current} pendingPosition={selectedLayer&&positions.get(selectedLayer.id)} autoKey={autoKey} setAutoKey={setAutoKey} channel={channel} setChannel={setChannel} record={record} recordPosition={recordPosition} recordAll={recordAll} erase={erase} changeEasing={changeEasing} seek={seek}/>
     </div>
-    <Timeline layers={layers} duration={project.duration} time={current} selected={selected} snap={snap} setSnap={setSnap} seek={seek} pause={pause}
+    <Timeline layers={layers} duration={project.duration} time={current} selected={selected} snap={snap} setSnap={setSnap} seek={seek} pause={pause} channel={channel}
       select={select} toggle={toggle} preview={setDraft} finish={finish}/>
   </main>
 }
