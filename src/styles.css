@@ -110,6 +110,7 @@ textarea{resize:vertical;min-height:53px;margin-bottom:8px}
 .key-actions{display:flex;align-items:center;gap:2px}
 .key-actions button{padding:5px}
 .key-add{flex:1;background:#322746;color:#dfccff;font-size:11px}
+.position-key{width:100%;margin-top:6px;background:#322746;color:#dfccff;font-size:11px}
 .animation-hint{margin:9px 0 0;color:var(--soft);font-size:10px;line-height:1.5}
 .key-marker{position:absolute;top:19px;width:10px;height:10px;padding:0;border-radius:2px;transform:translateX(-50%) rotate(45deg);background:#d1aeff;border:1px solid #372449;z-index:1}
 .key-marker:hover:not(:disabled),.key-marker.current{background:#fff3ff}

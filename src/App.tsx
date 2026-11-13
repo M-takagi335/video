@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Circle, Copy, Grid2X2, Minus, MoveUpRight, Plus, Play, Pause, Redo2, Scan, Shapes, Square, Star, Trash2, Triangle, Type, Undo2, WandSparkles } from 'lucide-react'
-import Canvas from './Canvas'
+import Canvas, { type CanvasEdit } from './Canvas'
 import Inspector from './Inspector'
 import Timeline from './Timeline'
 import { useProject } from './useProject'
 import { clamp, frame, makeLayer, shapes, timecode, type Kind, type Layer, type Project } from './model'
 import { editProject, reorder } from './editor'
-import { applyLayerEdit, atKey, channelNames, evaluate, offsetPosition, removeKey, setKey, withTrimmedStart, type Channel, type Easing } from './animation'
+import { applyCanvasEdit, applyLayerEdit, atKey, evaluate, keyTimes, offsetPosition, removeKey, setKey, toFrame, withTrimmedStart, type Channel, type Easing } from './animation'
 import { usePlayback } from './usePlayback'
 
 const icons={circle:Circle,ellipse:Circle,rect:Square,rounded:Square,triangle:Triangle,polygon:Shapes,star:Star,line:Minus,arrow:MoveUpRight}
@@ -32,20 +32,22 @@ export default function App(){
     setDraft(undefined)
     if(next)commit(p=>next.every((layer,i)=>layer===p.layers[i])?p:{...p,layers:next})
   }
-  function canvasChange(next:Layer[]){
-    return project.layers.map((layer,index)=>{
-      const before=canvasLayers[index], after=next[index]
-      if(!before || !after || after===before)return layer
-      const patch:Partial<Layer>={}
-      for(const key of channelNames){
-        if(before[key]!==after[key])Object.assign(patch,{[key]:after[key]})
-      }
-      return applyLayerEdit(layer,patch,current,autoKey)
+  function canvasChange(edit:CanvasEdit,layers:Layer[]){
+    const changed=new Map(edit.before.flatMap((before,i)=>{
+      const after=edit.after[i]
+      return before===after?[]:[[before.id,{before,after}] as const]
+    }))
+    return layers.map(layer=>{
+      const pose=changed.get(layer.id)
+      return pose?applyCanvasEdit(layer,pose.before,pose.after,edit.time,autoKey):layer
     })
   }
-  function finishCanvas(next?:Layer[]){
+  function finishCanvas(edit?:CanvasEdit){
     setCanvasDraft(undefined)
-    if(next)finish(canvasChange(next))
+    if(edit)commit(p=>{
+      const layers=canvasChange(edit,p.layers)
+      return layers.every((layer,i)=>layer===p.layers[i])?p:{...p,layers}
+    })
   }
   function add(kind:Kind){
     const start=Math.min(current,frame(project.duration-1/30))
@@ -75,6 +77,14 @@ export default function App(){
   function record(key:Channel,easing?:Easing){
     pause()
     updateSelected(l=>setKey(l,key,current,evaluate(l,current)[key],easing))
+  }
+  function recordPosition(easing:Easing){
+    pause()
+    updateSelected(layer=>{
+      const {x,y}=evaluate(layer,current)
+      const withX=atKey(layer,'x',current)?layer:setKey(layer,'x',current,x,easing)
+      return atKey(layer,'y',current)?withX:setKey(withX,'y',current,y,easing)
+    })
   }
   function erase(key:Channel){
     pause()
@@ -106,9 +116,17 @@ export default function App(){
     setSelected(copies.map(l=>l.id))
   }
   function step(direction:number){seek(current+direction/30)}
+  function stepKey(direction:number){
+    pause()
+    if(selection.length!==1)return
+    const frames=keyTimes(selection[0])
+    const currentFrame=toFrame(current)
+    const target=direction<0?frames.filter(frame=>frame<currentFrame).at(-1):frames.find(frame=>frame>currentFrame)
+    if(target!==undefined)seek(target/30)
+  }
   useEffect(()=>{
     const keyboard=(e:KeyboardEvent)=>{
-      if(e.target instanceof HTMLElement && e.target.closest('input,textarea,select,[contenteditable]'))return
+      if(e.target instanceof HTMLElement && (e.target.isContentEditable || e.target.closest('input,textarea,select')))return
       const mod=e.ctrlKey||e.metaKey
       const key=e.key.toLowerCase()
       if(mod && key==='z'){e.preventDefault();e.shiftKey?redo():undo()}
@@ -119,7 +137,12 @@ export default function App(){
       else if(key==='delete'||key==='backspace'){e.preventDefault();remove()}
       else if(e.code==='Space' && !(e.target instanceof HTMLElement && e.target.closest('button'))){e.preventDefault();if(!e.repeat)togglePlayback()}
       else if(key==='escape')select(null)
-      else if(key==='arrowleft'||key==='arrowright'){e.preventDefault();step(key==='arrowleft'?-1:1)}
+      else if(key==='arrowleft'||key==='arrowright'){
+        e.preventDefault()
+        const direction=key==='arrowleft'?-1:1
+        if(e.altKey)stepKey(direction)
+        else step(direction)
+      }
     }
     window.addEventListener('keydown',keyboard)
     return ()=>window.removeEventListener('keydown',keyboard)
@@ -159,7 +182,7 @@ export default function App(){
         </div>
         <div className="viewport">
           <div className="canvas-fit" style={{'--ratio':project.width/project.height,'--zoom':zoom/100} as React.CSSProperties}>
-            <Canvas project={project} layers={canvasDraft??canvasLayers} selected={selected} time={current} grid={grid} snap={snap} select={select} preview={next=>setCanvasDraft(canvasChange(next).map(layer=>evaluate(layer,current)))} finish={finishCanvas} pause={pause}/>
+            <Canvas project={project} layers={canvasDraft??canvasLayers} selected={selected} time={current} grid={grid} snap={snap} select={select} preview={next=>setCanvasDraft(canvasChange(next,project.layers).map(layer=>evaluate(layer,current)))} finish={finishCanvas} pause={pause}/>
           </div>
         </div>
         <div className="viewer-footer">
@@ -177,7 +200,7 @@ export default function App(){
         </div>
       </section>
       <Inspector project={project} layer={selectedLayer} count={selection.length} editLayer={editLayer} editProject={change}
-        time={current} autoKey={autoKey} setAutoKey={setAutoKey} record={record} erase={erase} changeEasing={changeEasing} seek={seek}/>
+        time={current} autoKey={autoKey} setAutoKey={setAutoKey} record={record} recordPosition={recordPosition} erase={erase} changeEasing={changeEasing} seek={seek}/>
     </div>
     <Timeline layers={layers} duration={project.duration} time={current} selected={selected} snap={snap} setSnap={setSnap} seek={seek} pause={pause}
       select={select} toggle={toggle} preview={setDraft} finish={finish}/>

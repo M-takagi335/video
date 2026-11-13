@@ -6,6 +6,8 @@ const star = Array.from({length:10},(_,i)=>{
   return [Math.cos(angle)*radius, Math.sin(angle)*radius].join(',')
 }).join(' ')
 
+export interface CanvasEdit { before:Layer[]; after:Layer[]; time:number }
+
 function Artwork({layer:l}:{layer:Layer}){
   const {w,h,color,stroke,strokeWidth}=l
   const left=-w/2, top=-h/2
@@ -32,12 +34,12 @@ function Artwork({layer:l}:{layer:Layer}){
 type Mode = 'move' | 'rotate' | 'resize'
 interface Props {
   project:Project; selected:string[]; time:number; grid:boolean; snap:boolean;
-  select:(id:string|null, multi?:boolean)=>void; preview:(layers:Layer[])=>void;
-  finish:(layers?:Layer[])=>void; layers:Layer[]; pause:()=>void;
+  select:(id:string|null, multi?:boolean)=>void; preview:(edit:CanvasEdit)=>void;
+  finish:(edit?:CanvasEdit)=>void; layers:Layer[]; pause:()=>void;
 }
 export default function Canvas({project,selected,time,grid,snap,select,preview,finish,layers,pause}:Props){
   const svg=useRef<SVGSVGElement>(null)
-  const gesture=useRef<{start:DOMPoint; layer:Layer; initial:Layer[]; ids:string[]; mode:Mode; sx:number; sy:number; result?:Layer[]} | null>(null)
+  const gesture=useRef<{start:DOMPoint; layer:Layer; initial:Layer[]; ids:string[]; mode:Mode; sx:number; sy:number; time:number; result?:CanvasEdit} | null>(null)
   const {width,height}=project
   const point=(e:PointerEvent)=>new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.current!.getScreenCTM()!.inverse())
   function begin(e:PointerEvent,l:Layer,mode:Mode,sx=1,sy=1){
@@ -46,7 +48,7 @@ export default function Canvas({project,selected,time,grid,snap,select,preview,f
     if(mode==='move' && (e.shiftKey || !selected.includes(l.id))) select(l.id,e.shiftKey)
     if(l.locked || e.shiftKey)return
     pause()
-    gesture.current={start:point(e),layer:l,initial:layers,ids:selected.includes(l.id)?selected:[l.id],mode,sx,sy}
+    gesture.current={start:point(e),layer:l,initial:layers,ids:selected.includes(l.id)?selected:[l.id],mode,sx,sy,time}
     svg.current!.setPointerCapture(e.pointerId)
   }
   function move(e:PointerEvent){
@@ -60,11 +62,11 @@ export default function Canvas({project,selected,time,grid,snap,select,preview,f
     const w=clamp(l.w+localX*g.sx,8,8192), h=clamp(l.h+localY*g.sy,8,8192)
     const shiftX=(w-l.w)*g.sx/2, shiftY=(h-l.h)*g.sy/2
     const angle=(v:DOMPoint)=>Math.atan2(v.y-l.y,v.x-l.x)*180/Math.PI
-    const deltaX=snap?Math.round((l.x+dx)/20)*20-l.x:dx
-    const deltaY=snap?Math.round((l.y+dy)/20)*20-l.y:dy
-    g.result=g.initial.map(item=>{
+    const deltaX=Math.abs(dx)<1e-6?0:snap?Math.round((l.x+dx)/20)*20-l.x:Math.round(dx)
+    const deltaY=Math.abs(dy)<1e-6?0:snap?Math.round((l.y+dy)/20)*20-l.y:Math.round(dy)
+    const after=g.initial.map(item=>{
       if(item.locked)return item
-      if(g.mode==='move' && g.ids.includes(item.id))return {...item,x:Math.round(item.x+deltaX),y:Math.round(item.y+deltaY)}
+      if(g.mode==='move' && g.ids.includes(item.id))return {...item,x:item.x+deltaX,y:item.y+deltaY}
       if(item.id!==l.id)return item
       if(g.mode==='rotate')return {...item,rotation:Math.round(l.rotation+(angle(p)-angle(g.start)+540)%360-180)}
       if(g.mode==='resize')return {...item,w:Math.round(w),h:Math.round(h),
@@ -73,6 +75,7 @@ export default function Canvas({project,selected,time,grid,snap,select,preview,f
         fontSize:l.kind==='text'?clamp(Math.round(l.fontSize*Math.min(w/l.w,h/l.h)),6,1024):l.fontSize}
       return item
     })
+    g.result={before:g.initial,after,time:g.time}
     preview(g.result)
   }
   function end(cancel=false){

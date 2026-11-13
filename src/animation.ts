@@ -1,4 +1,4 @@
-﻿import { clamp, type Layer } from './model'
+import { clamp, type Layer } from './model'
 
 export const channels = {
   x:'X 座標', y:'Y 座標', w:'幅', h:'高さ', rotation:'回転', opacity:'不透明度',
@@ -102,9 +102,24 @@ export function applyLayerEdit(layer:Layer,patch:Partial<Layer>,time:number,auto
   return Object.keys(base).length?{...next,...base}:next
 }
 
+export function applyCanvasEdit(layer:Layer,before:Layer,after:Layer,time:number,auto:boolean):Layer {
+  if(layer.locked)return layer
+  const patch:Partial<Layer>={}
+  for(const key of channelNames){
+    if(before[key]!==after[key])Object.assign(patch,{[key]:after[key]})
+  }
+  const next=applyLayerEdit(layer,patch,time,auto)
+  if(auto || !inClip(layer,time))return next
+
+  // An off-key canvas move translates the animated path without creating keys.
+  const dx=patch.x!==undefined && layer.tracks?.x?.length && !atKey(layer,'x',time)?patch.x-before.x:0
+  const dy=patch.y!==undefined && layer.tracks?.y?.length && !atKey(layer,'y',time)?patch.y-before.y:0
+  return dx || dy?offsetPosition(next,dx,dy):next
+}
+
 export function keyTimes(layer:Layer):number[] {
   const start=toFrame(layer.start), end=toFrame(layer.end)
-  const frames=Object.values(layer.tracks??{}).flatMap(track=>track.map(key=>key.frame+start))
+  const frames=Object.values(layer.tracks??{}).flatMap(track=>track?.map(key=>key.frame+start)??[])
   return [...new Set(frames)].filter(frame=>frame>=start&&frame<end).sort((a,b)=>a-b)
 }
 
@@ -112,7 +127,7 @@ export function keyTimes(layer:Layer):number[] {
 export function withTrimmedStart(layer:Layer,start:number):Layer {
   const shift=toFrame(layer.start)-toFrame(start)
   const tracks=layer.tracks?Object.fromEntries(Object.entries(layer.tracks).map(([key,entries])=>
-    [key,entries.map(entry=>({...entry,frame:entry.frame+shift}))])):undefined
+    [key,entries?.map(entry=>({...entry,frame:entry.frame+shift}))])):undefined
   return {...layer,start,tracks}
 }
 
@@ -120,7 +135,7 @@ export function offsetPosition(layer:Layer,dx:number,dy:number):Layer {
   const tracks=layer.tracks
   return {...layer,x:layer.x+dx,y:layer.y+dy,tracks:tracks&&{
     ...tracks,
-    x:tracks.x?.map(key=>({...key,value:key.value+dx})),
-    y:tracks.y?.map(key=>({...key,value:key.value+dy})),
+    ...(dx&&tracks.x?{x:tracks.x.map(key=>({...key,value:key.value+dx}))}:{}),
+    ...(dy&&tracks.y?{y:tracks.y.map(key=>({...key,value:key.value+dy}))}:{}),
   }}
 }
