@@ -1,4 +1,4 @@
-﻿import { useRef, type PointerEvent } from 'react'
+import { useRef, type PointerEvent } from 'react'
 import { clamp, type Layer, type Project } from './model'
 const star = Array.from({length:10},(_,i)=>{
   const angle=i*Math.PI/5-Math.PI/2
@@ -33,9 +33,9 @@ type Mode = 'move' | 'rotate' | 'resize'
 interface Props {
   project:Project; selected:string[]; time:number; grid:boolean; snap:boolean;
   select:(id:string|null, multi?:boolean)=>void; preview:(layers:Layer[])=>void;
-  finish:(layers?:Layer[])=>void; layers:Layer[];
+  finish:(layers?:Layer[])=>void; layers:Layer[]; pause:()=>void;
 }
-export default function Canvas({project,selected,time,grid,snap,select,preview,finish,layers}:Props){
+export default function Canvas({project,selected,time,grid,snap,select,preview,finish,layers,pause}:Props){
   const svg=useRef<SVGSVGElement>(null)
   const gesture=useRef<{start:DOMPoint; layer:Layer; initial:Layer[]; ids:string[]; mode:Mode; sx:number; sy:number; result?:Layer[]} | null>(null)
   const {width,height}=project
@@ -45,6 +45,7 @@ export default function Canvas({project,selected,time,grid,snap,select,preview,f
     e.stopPropagation()
     if(mode==='move' && (e.shiftKey || !selected.includes(l.id))) select(l.id,e.shiftKey)
     if(l.locked || e.shiftKey)return
+    pause()
     gesture.current={start:point(e),layer:l,initial:layers,ids:selected.includes(l.id)?selected:[l.id],mode,sx,sy}
     svg.current!.setPointerCapture(e.pointerId)
   }
@@ -65,7 +66,7 @@ export default function Canvas({project,selected,time,grid,snap,select,preview,f
       if(item.locked)return item
       if(g.mode==='move' && g.ids.includes(item.id))return {...item,x:Math.round(item.x+deltaX),y:Math.round(item.y+deltaY)}
       if(item.id!==l.id)return item
-      if(g.mode==='rotate')return {...item,rotation:Math.round((l.rotation+angle(p)-angle(g.start)+720)%360)}
+      if(g.mode==='rotate')return {...item,rotation:Math.round(l.rotation+(angle(p)-angle(g.start)+540)%360-180)}
       if(g.mode==='resize')return {...item,w:Math.round(w),h:Math.round(h),
         x:Math.round(l.x+shiftX*Math.cos(theta)-shiftY*Math.sin(theta)),
         y:Math.round(l.y+shiftX*Math.sin(theta)+shiftY*Math.cos(theta)),

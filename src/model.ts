@@ -1,6 +1,9 @@
-﻿export const shapes = { circle:'円', ellipse:'楕円', rect:'長方形', rounded:'角丸', triangle:'三角形', polygon:'多角形', star:'星', line:'直線', arrow:'矢印' } as const
+import type { Tracks } from './animation'
+
+export const shapes = { circle:'円', ellipse:'楕円', rect:'長方形', rounded:'角丸', triangle:'三角形', polygon:'多角形', star:'星', line:'直線', arrow:'矢印' } as const
 export type Kind = 'text' | keyof typeof shapes
 export interface Layer {
+  tracks?:Tracks;
   id:string; kind:Kind; name:string; text:string; x:number; y:number; w:number; h:number; rotation:number;
   color:string; opacity:number; fontSize:number; font:string; bold:boolean; align:'left'|'center'|'right';
   stroke:string; strokeWidth:number; fill:boolean; start:number; end:number; hidden:boolean; locked:boolean;

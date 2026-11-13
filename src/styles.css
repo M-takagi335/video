@@ -1,4 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 :root{font-family:Inter,"Yu Gothic",Meiryo,sans-serif;color:#eeedf4;background:#14151a;color-scheme:dark;font-size:13px;--line:#2b2c36;--panel:#1a1b22;--soft:#a6a5b5;--accent:#a78bfa}
 *{box-sizing:border-box}
 body{margin:0;min-width:760px}
@@ -105,6 +105,14 @@ textarea{resize:vertical;min-height:53px;margin-bottom:8px}
 .trim:hover{background:#ffffff45}
 .trim.start{left:0}.trim.end{right:0}
 .playhead{position:absolute;top:21px;bottom:0;pointer-events:none;border-left:1px solid #ba9aff;z-index:2}
+.transport-play{background:#8060dc;color:#fff!important;min-width:36px}
+.transport-play:hover:not(:disabled){background:#9674f5}
+.key-actions{display:flex;align-items:center;gap:2px}
+.key-actions button{padding:5px}
+.key-add{flex:1;background:#322746;color:#dfccff;font-size:11px}
+.animation-hint{margin:9px 0 0;color:var(--soft);font-size:10px;line-height:1.5}
+.key-marker{position:absolute;top:19px;width:10px;height:10px;padding:0;border-radius:2px;transform:translateX(-50%) rotate(45deg);background:#d1aeff;border:1px solid #372449;z-index:1}
+.key-marker:hover:not(:disabled),.key-marker.current{background:#fff3ff}
 .playhead:before{content:"";position:absolute;top:0;left:-5px;width:9px;height:9px;background:#ba9aff;clip-path:polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)}
 @media(max-width:1050px){.workspace{grid-template-columns:155px minmax(220px,1fr) 220px}.library-content{padding:13px 8px}.shape-grid{gap:4px}}
 

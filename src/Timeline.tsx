@@ -1,15 +1,16 @@
-﻿import { useRef, useState, type PointerEvent } from 'react'
+import { useRef, useState, type PointerEvent } from 'react'
 import { ChevronDown, ChevronUp, Eye, EyeOff, Grip, Lock, Unlock, Magnet, Minus, Plus, Type, Shapes } from 'lucide-react'
 import { clamp, frame, timecode, type Layer } from './model'
 import { retime } from './editor'
+import { keyTimes, toFrame } from './animation'
 
 interface Props {
   layers:Layer[]; duration:number; time:number; selected:string[]; snap:boolean;
-  setSnap:(s:boolean)=>void; seek:(t:number)=>void; select:(id:string,multi?:boolean)=>void;
+  pause:()=>void; setSnap:(s:boolean)=>void; seek:(t:number)=>void; select:(id:string,multi?:boolean)=>void;
   toggle:(id:string,key:'locked'|'hidden')=>void; preview:(layers:Layer[])=>void; finish:(layers?:Layer[])=>void;
 }
 const trackHeader=212
-export default function Timeline({layers,duration,time,selected,snap,setSnap,seek,select,toggle,preview,finish}:Props){
+export default function Timeline({layers,duration,time,selected,snap,setSnap,seek,select,toggle,preview,finish,pause}:Props){
   const [height,setHeight]=useState(274)
   const [fold,setFold]=useState(false)
   const [scale,setScale]=useState(65)
@@ -28,6 +29,7 @@ export default function Timeline({layers,duration,time,selected,snap,setSnap,see
     e.stopPropagation()
     select(l.id,e.shiftKey)
     if(l.locked || e.shiftKey)return
+    pause()
     drag.current={x:e.clientX,layer:l,layers,mode}
     scroll.current!.setPointerCapture(e.pointerId)
   }
@@ -81,6 +83,12 @@ export default function Timeline({layers,duration,time,selected,snap,setSnap,see
               <div className="trim start" aria-label="開始位置を調整" onPointerDown={e=>startClip(e,l,'start')}/>
               <div className="trim end" aria-label="終了位置を調整" onPointerDown={e=>startClip(e,l,'end')}/>
             </div>
+            {keyTimes(l).map(frame=><button type="button" key={frame}
+              className={'key-marker'+(toFrame(time)===frame?' current':'')}
+              style={{left:Math.max(5,frame/30*scale)}}
+              title={l.name+' · '+timecode(frame/30)}
+              aria-label={l.name+' のキーフレーム '+timecode(frame/30)}
+              onPointerDown={e=>e.stopPropagation()} onClick={()=>{select(l.id);seek(frame/30)}}/>)}
           </div>
         </div>)}
         <div className="playhead" style={{left:trackHeader+time*scale}}/>

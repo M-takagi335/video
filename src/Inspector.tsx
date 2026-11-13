@@ -1,5 +1,7 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Layers3, SlidersHorizontal } from 'lucide-react'
+import AnimationPanel, { type AnimationControls } from './AnimationPanel'
+import { atKey, evaluate, inClip, type Channel } from './animation'
 import { clamp, fonts, frame, type Layer, type Project } from './model'
 
 function NumberField({label,value,min,max,step=1,disabled=false,change}:{label:string;value:number;min:number;max:number;step?:number;disabled?:boolean;change:(n:number)=>void}){
@@ -10,13 +12,15 @@ function NumberField({label,value,min,max,step=1,disabled=false,change}:{label:s
     onBlur={()=>{if(draft!==null && draft.trim() && Number.isFinite(Number(draft)))change(clamp(Number(draft),min,max));setDraft(null)}}
     onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}}/></label>
 }
-export default function Inspector({project,layer,count,editLayer,editProject}:{project:Project;layer?:Layer;count:number;editLayer:(p:Partial<Layer>)=>void;editProject:(p:Partial<Project>)=>void}){
+export default function Inspector({project,layer,count,editLayer,editProject,...animation}:{project:Project;layer?:Layer;count:number;editLayer:(p:Partial<Layer>)=>void;editProject:(p:Partial<Project>)=>void}&AnimationControls){
+  const pose=layer && evaluate(layer,animation.time)
+  const editable=(key:Channel)=>!layer?.tracks?.[key]?.length || (inClip(layer,animation.time) && (animation.autoKey || !!atKey(layer,key,animation.time)))
   const [custom,setCustom]=useState(false)
   const [tab,setTab]=useState<'layer'|'canvas'>('layer')
   const ratio=project.width*9===project.height*16?'16:9':project.width*16===project.height*9?'9:16':project.width===project.height?'1:1':'custom'
   const dimensions:Record<string,[number,number]>={'16:9':[1280,720],'9:16':[720,1280],'1:1':[1080,1080]}
-  const number=(label:string,key:'x'|'y'|'w'|'h'|'rotation'|'opacity'|'fontSize'|'strokeWidth',min:number,max:number)=>layer&&
-    <NumberField label={label} value={layer[key]} min={min} max={max} change={n=>editLayer({[key]:n})}/>
+  const number=(label:string,key:'x'|'y'|'w'|'h'|'rotation'|'opacity'|'fontSize'|'strokeWidth',min:number,max:number)=>pose&&
+    <NumberField label={label} value={pose[key]} disabled={key!=='strokeWidth'&&!editable(key)} min={min} max={max} change={n=>editLayer({[key]:n})}/>
   return <aside className="inspector">
     <div className="panel-tabs"><button className={tab==='layer'?'active':''} onClick={()=>setTab('layer')}><SlidersHorizontal/>プロパティ</button>
       <button className={tab==='canvas'?'active':''} onClick={()=>setTab('canvas')}>キャンバス</button></div>
@@ -36,6 +40,7 @@ export default function Inspector({project,layer,count,editLayer,editProject}:{p
       <section className="layer-heading"><Layers3 size={17}/><input aria-label="レイヤー名" key={layer.name} defaultValue={layer.name} onBlur={e=>{if(e.target.value.trim() && e.target.value!==layer.name)editLayer({name:e.target.value.trim()})}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}}/></section>
       <section><h3>トランスフォーム</h3><div className="field-pair">{number('X 座標','x',-16384,16384)}{number('Y 座標','y',-16384,16384)}
       {number('幅','w',8,8192)}{number('高さ','h',8,8192)}{number('回転 (°)','rotation',-3600,3600)}{number('不透明度 (%)','opacity',0,100)}</div></section>
+      <AnimationPanel layer={layer} {...animation}/>
       <section><h3>{layer.kind==='text'?'テキスト':'スタイル'}</h3>
         {layer.kind==='text' && <>
           <textarea aria-label="テキスト内容" key={layer.text} defaultValue={layer.text} onBlur={e=>{if(e.target.value!==layer.text)editLayer({text:e.target.value})}}/>
@@ -43,7 +48,7 @@ export default function Inspector({project,layer,count,editLayer,editProject}:{p
           <div className="field-pair">{number('文字サイズ','fontSize',6,1024)}<label className="field"><span>文字揃え</span><select value={layer.align} onChange={e=>editLayer({align:e.target.value as Layer['align']})}><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></label></div>
           <label className="checkbox"><input type="checkbox" checked={layer.bold} onChange={e=>editLayer({bold:e.target.checked})}/>太字</label>
         </>}
-        <div className="field-pair"><label className="field"><span>色</span><input type="color" value={layer.color} onChange={e=>editLayer({color:e.target.value})}/></label>
+        <div className="field-pair"><label className="field"><span>色</span><input type="color" value={pose!.color} disabled={!editable('color')} onChange={e=>editLayer({color:e.target.value})}/></label>
         <label className="field"><span>枠線の色</span><input type="color" value={layer.stroke} onChange={e=>editLayer({stroke:e.target.value})}/></label></div>
         {layer.kind!=='text' && layer.kind!=='line' && <label className="checkbox"><input type="checkbox" checked={layer.fill} onChange={e=>editLayer({fill:e.target.checked})}/>塗りつぶし</label>}
         {number('枠線の太さ','strokeWidth',0,100)}
