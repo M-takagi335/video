@@ -111,22 +111,27 @@ export function setPositionKey(layer:Layer,time:number,position:Position,easing?
   )
 }
 
-export function applyCanvasEdit(layer:Layer,before:Layer,after:Layer,time:number,auto:boolean):{layer:Layer;position?:Position;saved?:boolean} {
+type PositionEdit = {layer:Layer;position?:Position;saved?:boolean}
+
+export function editPosition(layer:Layer,time:number,position:Position,auto:boolean):PositionEdit {
+  if(layer.locked || !inClip(layer,time))return {layer}
+  if(auto || (atKey(layer,'x',time) && atKey(layer,'y',time))){
+    return {layer:setPositionKey(layer,time,position),position,saved:true}
+  }
+  if(!layer.tracks?.x?.length && !layer.tracks?.y?.length){
+    return {layer:{...layer,...position},position,saved:true}
+  }
+  return {layer,position,saved:false}
+}
+
+export function applyCanvasEdit(layer:Layer,before:Layer,after:Layer,time:number,auto:boolean):PositionEdit {
   const patch:Partial<Layer>={}
   for(const key of channelNames){
     if(key!=='x' && key!=='y' && before[key]!==after[key])Object.assign(patch,{[key]:after[key]})
   }
   const next=applyLayerEdit(layer,patch,time,auto)
-  if(layer.locked || !inClip(layer,time) || (before.x===after.x && before.y===after.y))return {layer:next}
-
-  const position={x:after.x,y:after.y}
-  if(auto || (atKey(layer,'x',time) && atKey(layer,'y',time))){
-    return {layer:setPositionKey(next,time,position),position,saved:true}
-  }
-  if(!layer.tracks?.x?.length && !layer.tracks?.y?.length){
-    return {layer:{...next,...position},position,saved:true}
-  }
-  return {layer:next,position,saved:false}
+  if(before.x===after.x && before.y===after.y)return {layer:next}
+  return editPosition(next,time,{x:after.x,y:after.y},auto)
 }
 
 export function keyTimes(layer:Layer):number[] {

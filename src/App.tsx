@@ -6,7 +6,7 @@ import Timeline from './Timeline'
 import { useProject } from './useProject'
 import { clamp, frame, makeLayer, shapes, timecode, type Kind, type Layer, type Project } from './model'
 import { editProject, reorder } from './editor'
-import { applyCanvasEdit, applyLayerEdit, atKey, evaluate, keyTimes, offsetPosition, removeKey, setKey, setPositionKey, toFrame, withTrimmedStart, type Channel, type Easing, type Position } from './animation'
+import { applyCanvasEdit, applyLayerEdit, atKey, editPosition, evaluate, keyTimes, offsetPosition, removeKey, setKey, setPositionKey, toFrame, withTrimmedStart, type Channel, type Easing, type Position } from './animation'
 import { usePlayback } from './usePlayback'
 
 const icons={circle:Circle,ellipse:Circle,rect:Square,rounded:Square,triangle:Triangle,polygon:Shapes,star:Star,line:Minus,arrow:MoveUpRight}
@@ -17,7 +17,11 @@ export default function App(){
   const [canvasDraft,setCanvasDraft]=useState<Layer[]>()
   const [positions,setPositions]=useState<Map<string,Position>>(()=>new Map())
   const {current,playing,pause,seek:seekPlayback,toggle:togglePlayer}=usePlayback(project.duration)
-  const seek=(time:number)=>{setPositions(new Map());seekPlayback(time)}
+  const seek=(time:number)=>{
+    if(toFrame(clamp(time,0,project.duration))!==toFrame(current))setPositions(new Map())
+    setCanvasDraft(undefined)
+    seekPlayback(time)
+  }
   const togglePlayback=()=>{setPositions(new Map());togglePlayer()}
   const undo=()=>{setPositions(new Map());undoProject()}
   const redo=()=>{setPositions(new Map());redoProject()}
@@ -76,14 +80,24 @@ export default function App(){
   function change(patch:Partial<Project>){if(patch.duration!==undefined)setPositions(new Map());commit(p=>editProject(p,patch))}
   function editLayer(patch:Partial<Layer>){
     pause()
-    const id=selectedLayer?.id
-    const pending=id&&positions.get(id)
-    if(id && pending && (patch.x!==undefined || patch.y!==undefined)){
-      const position={x:patch.x??pending.x,y:patch.y??pending.y}
-      if(autoKey){
-        updateSelected(layer=>setPositionKey(layer,current,position))
-        setPositions(previous=>{const next=new Map(previous);next.delete(id);return next})
-      }else setPositions(previous=>new Map(previous).set(id,position))
+    if(selectedLayer && (patch.x!==undefined || patch.y!==undefined)){
+      const id=selectedLayer.id
+      const pending=positions.get(id)
+      const key=patch.x!==undefined?'x':'y'
+      if(!autoKey && !pending && atKey(selectedLayer,key,current)){
+        updateSelected(layer=>applyLayerEdit(layer,patch,current,false))
+        return
+      }
+      const pose=pending??evaluate(selectedLayer,current)
+      const position={x:patch.x??pose.x,y:patch.y??pose.y}
+      const result=editPosition(selectedLayer,current,position,autoKey)
+      if(result.layer!==selectedLayer)updateSelected(layer=>editPosition(layer,current,position,autoKey).layer)
+      if(result.position)setPositions(previous=>{
+        const next=new Map(previous)
+        if(result.saved)next.delete(id)
+        else next.set(id,position)
+        return next
+      })
       return
     }
     if(patch.start!==undefined || patch.end!==undefined)setPositions(new Map())
