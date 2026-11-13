@@ -5,7 +5,7 @@ import { type Layer } from './model'
 
 export interface AnimationControls {
   time:number
-  pendingPosition?:Position
+  pendingPosition?:Partial<Position>
   autoKey:boolean
   setAutoKey:(active:boolean)=>void
   record:(key:Channel,easing?:Easing)=>void
@@ -18,6 +18,7 @@ export default function AnimationPanel({layer,time,pendingPosition,autoKey,setAu
   const [channel,setChannel]=useState<Channel>('x')
   const [defaultEasing,setDefaultEasing]=useState<Easing>('Linear')
   const keyframe=atKey(layer,channel,time)
+  const pendingAxis=(channel==='x'||channel==='y') && pendingPosition?.[channel]!==undefined
   const frame=toFrame(time), start=toFrame(layer.start), end=toFrame(layer.end)
   const frames=(layer.tracks?.[channel]??[]).map(key=>start+key.frame).filter(frame=>frame>=start&&frame<end)
   const previous=frames.filter(value=>value<frame).at(-1)
@@ -35,8 +36,8 @@ export default function AnimationPanel({layer,time,pendingPosition,autoKey,setAu
     }}>{easings.map(easing=><option key={easing}>{easing}</option>)}</select></label>
     <div className="key-actions">
       <button type="button" aria-label="前のキーフレーム" disabled={previous===undefined} onClick={()=>seek(previous!/30)}><ChevronLeft/></button>
-      <button type="button" className={'key-add'+(keyframe?' toggled':'')} disabled={!inClip(layer,time)||!!keyframe}
-        onClick={()=>record(channel,defaultEasing)}><Diamond/>{keyframe?'登録済み':'キーを追加'}</button>
+      <button type="button" className={'key-add'+(keyframe?' toggled':'')} disabled={!inClip(layer,time)||(!!keyframe&&!pendingAxis)}
+        onClick={()=>record(channel,keyframe?.easing??defaultEasing)}><Diamond/>{keyframe?(pendingAxis?'キーを更新':'登録済み'):'キーを追加'}</button>
       <button type="button" aria-label="キーフレームを削除" disabled={!keyframe} onClick={()=>erase(channel)}><Trash2/></button>
       <button type="button" aria-label="次のキーフレーム" disabled={next===undefined} onClick={()=>seek(next!/30)}><ChevronRight/></button>
     </div>

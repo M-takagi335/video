@@ -15,7 +15,7 @@ export default function App(){
   const [selected,setSelected]=useState(['title'])
   const [draft,setDraft]=useState<Layer[]>()
   const [canvasDraft,setCanvasDraft]=useState<Layer[]>()
-  const [positions,setPositions]=useState<Map<string,Position>>(()=>new Map())
+  const [positions,setPositions]=useState<Map<string,Partial<Position>>>(()=>new Map())
   const {current,playing,pause,seek:seekPlayback,toggle:togglePlayer}=usePlayback(project.duration)
   const seek=(time:number)=>{
     if(toFrame(clamp(time,0,project.duration))!==toFrame(current))setPositions(new Map())
@@ -88,14 +88,14 @@ export default function App(){
         updateSelected(layer=>applyLayerEdit(layer,patch,current,false))
         return
       }
-      const pose=pending??evaluate(selectedLayer,current)
+      const pose={...evaluate(selectedLayer,current),...pending}
       const position={x:patch.x??pose.x,y:patch.y??pose.y}
       const result=editPosition(selectedLayer,current,position,autoKey)
       if(result.layer!==selectedLayer)updateSelected(layer=>editPosition(layer,current,position,autoKey).layer)
       if(result.position)setPositions(previous=>{
         const next=new Map(previous)
         if(result.saved)next.delete(id)
-        else next.set(id,position)
+        else next.set(id,{...next.get(id),[key]:position[key]})
         return next
       })
       return
@@ -121,13 +121,24 @@ export default function App(){
     pause()
     const pending=selectedLayer&&positions.get(selectedLayer.id)
     updateSelected(l=>setKey(l,key,current,{...evaluate(l,current),...pending}[key],easing))
+    if(selectedLayer && pending && (key==='x'||key==='y')){
+      const id=selectedLayer.id
+      setPositions(previous=>{
+        const next=new Map(previous)
+        const position={...next.get(id)}
+        delete position[key]
+        if(position.x===undefined && position.y===undefined)next.delete(id)
+        else next.set(id,{...next.get(id),[key]:position[key]})
+        return next
+      })
+    }
   }
   function recordPosition(easing:Easing){
     pause()
     const id=selectedLayer?.id
     if(!id)return
     const pending=positions.get(id)
-    updateSelected(layer=>setPositionKey(layer,current,pending??evaluate(layer,current),easing))
+    updateSelected(layer=>setPositionKey(layer,current,{...evaluate(layer,current),...pending},easing))
     setPositions(previous=>{
       const next=new Map(previous)
       next.delete(id)
