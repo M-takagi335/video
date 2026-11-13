@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Diamond, Trash2 } from 'lucide-react'
-import { atKey, channels, channelNames, easings, inClip, toFrame, type Channel, type Easing } from './animation'
+import { atKey, channels, channelNames, easings, inClip, toFrame, type Channel, type Easing, type Position } from './animation'
 import { type Layer } from './model'
 
 export interface AnimationControls {
   time:number
+  pendingPosition?:Position
   autoKey:boolean
   setAutoKey:(active:boolean)=>void
   record:(key:Channel,easing?:Easing)=>void
@@ -13,7 +14,7 @@ export interface AnimationControls {
   changeEasing:(key:Channel,easing:Easing)=>void
   seek:(time:number)=>void
 }
-export default function AnimationPanel({layer,time,autoKey,setAutoKey,record,recordPosition,erase,changeEasing,seek}:{layer:Layer}&AnimationControls){
+export default function AnimationPanel({layer,time,pendingPosition,autoKey,setAutoKey,record,recordPosition,erase,changeEasing,seek}:{layer:Layer}&AnimationControls){
   const [channel,setChannel]=useState<Channel>('x')
   const [defaultEasing,setDefaultEasing]=useState<Easing>('Linear')
   const keyframe=atKey(layer,channel,time)
@@ -39,8 +40,8 @@ export default function AnimationPanel({layer,time,autoKey,setAutoKey,record,rec
       <button type="button" aria-label="キーフレームを削除" disabled={!keyframe} onClick={()=>erase(channel)}><Trash2/></button>
       <button type="button" aria-label="次のキーフレーム" disabled={next===undefined} onClick={()=>seek(next!/30)}><ChevronRight/></button>
     </div>
-    <button type="button" className="position-key" disabled={!inClip(layer,time)||(!!atKey(layer,'x',time)&&!!atKey(layer,'y',time))}
+    <button type="button" className="position-key" disabled={!inClip(layer,time)||(!pendingPosition&&!!atKey(layer,'x',time)&&!!atKey(layer,'y',time))}
       onClick={()=>recordPosition(defaultEasing)}><Diamond/>位置（X・Y）のキーを追加</button>
-    <p className="animation-hint">{!inClip(layer,time)?'再生ヘッドをクリップ内に移動してください。':keyframe?'この位置のプロパティを編集できます。':'イージングは選んだキーに到達する区間に適用されます。'}</p>
+    <p className="animation-hint">{pendingPosition?'位置が未登録です。「位置（X・Y）のキーを追加」で確定します。':!inClip(layer,time)?'再生ヘッドをクリップ内に移動してください。':keyframe?'この位置のプロパティを編集できます。':'イージングは選んだキーに到達する区間に適用されます。'}</p>
   </section>
 }

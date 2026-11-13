@@ -13,8 +13,8 @@ function NumberField({label,value,min,max,step=1,disabled=false,change}:{label:s
     onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}}/></label>
 }
 export default function Inspector({project,layer,count,editLayer,editProject,...animation}:{project:Project;layer?:Layer;count:number;editLayer:(p:Partial<Layer>)=>void;editProject:(p:Partial<Project>)=>void}&AnimationControls){
-  const pose=layer && evaluate(layer,animation.time)
-  const editable=(key:Channel)=>!layer?.tracks?.[key]?.length || (inClip(layer,animation.time) && (animation.autoKey || !!atKey(layer,key,animation.time)))
+  const pose=layer && {...evaluate(layer,animation.time),...animation.pendingPosition}
+  const editable=(key:Channel)=>(!!animation.pendingPosition && (key==='x'||key==='y')) || !layer?.tracks?.[key]?.length || (inClip(layer,animation.time) && (animation.autoKey || !!atKey(layer,key,animation.time)))
   const [custom,setCustom]=useState(false)
   const [tab,setTab]=useState<'layer'|'canvas'>('layer')
   const ratio=project.width*9===project.height*16?'16:9':project.width*16===project.height*9?'9:16':project.width===project.height?'1:1':'custom'

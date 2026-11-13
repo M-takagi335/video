@@ -6,16 +6,21 @@ import Timeline from './Timeline'
 import { useProject } from './useProject'
 import { clamp, frame, makeLayer, shapes, timecode, type Kind, type Layer, type Project } from './model'
 import { editProject, reorder } from './editor'
-import { applyCanvasEdit, applyLayerEdit, atKey, evaluate, keyTimes, offsetPosition, removeKey, setKey, toFrame, withTrimmedStart, type Channel, type Easing } from './animation'
+import { applyCanvasEdit, applyLayerEdit, atKey, evaluate, keyTimes, offsetPosition, removeKey, setKey, setPositionKey, toFrame, withTrimmedStart, type Channel, type Easing, type Position } from './animation'
 import { usePlayback } from './usePlayback'
 
 const icons={circle:Circle,ellipse:Circle,rect:Square,rounded:Square,triangle:Triangle,polygon:Shapes,star:Star,line:Minus,arrow:MoveUpRight}
 export default function App(){
-  const {project,past,future,commit,undo,redo}=useProject()
+  const {project,past,future,commit,undo:undoProject,redo:redoProject}=useProject()
   const [selected,setSelected]=useState(['title'])
   const [draft,setDraft]=useState<Layer[]>()
   const [canvasDraft,setCanvasDraft]=useState<Layer[]>()
-  const {current,playing,pause,seek,toggle:togglePlayback}=usePlayback(project.duration)
+  const [positions,setPositions]=useState<Map<string,Position>>(()=>new Map())
+  const {current,playing,pause,seek:seekPlayback,toggle:togglePlayer}=usePlayback(project.duration)
+  const seek=(time:number)=>{setPositions(new Map());seekPlayback(time)}
+  const togglePlayback=()=>{setPositions(new Map());togglePlayer()}
+  const undo=()=>{setPositions(new Map());undoProject()}
+  const redo=()=>{setPositions(new Map());redoProject()}
   const [autoKey,setAutoKey]=useState(false)
   const [grid,setGrid]=useState(false)
   const [snap,setSnap]=useState(false)
@@ -23,29 +28,42 @@ export default function App(){
   const clipboard=useRef<Layer[]>([])
   const layers=draft??project.layers
   const selection=layers.filter(l=>selected.includes(l.id))
-  const canvasLayers=layers.map(layer=>evaluate(layer,current))
+  const canvasLayers=layers.map(layer=>({...evaluate(layer,current),...positions.get(layer.id)}))
   const selectedLayer=selection[0]
   function select(id:string|null,multi=false){
     setSelected(ids=>!id?[]:multi?ids.includes(id)?ids.filter(v=>v!==id):[...ids,id]:[id])
   }
   function finish(next?:Layer[]){
     setDraft(undefined)
+    if(next)setPositions(new Map())
     if(next)commit(p=>next.every((layer,i)=>layer===p.layers[i])?p:{...p,layers:next})
   }
-  function canvasChange(edit:CanvasEdit,layers:Layer[]){
+  function canvasChange(edit:CanvasEdit,source:Layer[]){
     const changed=new Map(edit.before.flatMap((before,i)=>{
       const after=edit.after[i]
       return before===after?[]:[[before.id,{before,after}] as const]
     }))
-    return layers.map(layer=>{
+    const pending=new Map(positions)
+    const layers=source.map(layer=>{
       const pose=changed.get(layer.id)
-      return pose?applyCanvasEdit(layer,pose.before,pose.after,edit.time,autoKey):layer
+      if(!pose)return layer
+      const result=applyCanvasEdit(layer,pose.before,pose.after,edit.time,autoKey)
+      if(result.saved)pending.delete(layer.id)
+      else if(result.position)pending.set(layer.id,result.position)
+      return result.layer
     })
+    return {layers,pending}
+  }
+  function previewCanvas(edit:CanvasEdit){
+    const {layers,pending}=canvasChange(edit,project.layers)
+    setCanvasDraft(layers.map(layer=>({...evaluate(layer,edit.time),...pending.get(layer.id)})))
   }
   function finishCanvas(edit?:CanvasEdit){
     setCanvasDraft(undefined)
-    if(edit)commit(p=>{
-      const layers=canvasChange(edit,p.layers)
+    if(!edit || toFrame(edit.time)!==toFrame(current))return
+    setPositions(canvasChange(edit,project.layers).pending)
+    commit(p=>{
+      const {layers}=canvasChange(edit,p.layers)
       return layers.every((layer,i)=>layer===p.layers[i])?p:{...p,layers}
     })
   }
@@ -55,9 +73,20 @@ export default function App(){
     commit(p=>({...p,layers:[layer,...p.layers]}))
     select(layer.id)
   }
-  function change(patch:Partial<Project>){commit(p=>editProject(p,patch))}
+  function change(patch:Partial<Project>){if(patch.duration!==undefined)setPositions(new Map());commit(p=>editProject(p,patch))}
   function editLayer(patch:Partial<Layer>){
     pause()
+    const id=selectedLayer?.id
+    const pending=id&&positions.get(id)
+    if(id && pending && (patch.x!==undefined || patch.y!==undefined)){
+      const position={x:patch.x??pending.x,y:patch.y??pending.y}
+      if(autoKey){
+        updateSelected(layer=>setPositionKey(layer,current,position))
+        setPositions(previous=>{const next=new Map(previous);next.delete(id);return next})
+      }else setPositions(previous=>new Map(previous).set(id,position))
+      return
+    }
+    if(patch.start!==undefined || patch.end!==undefined)setPositions(new Map())
     updateSelected(l=>{
       const updated=patch.start===undefined?l:withTrimmedStart(l,patch.start)
       return applyLayerEdit(updated,patch,current,autoKey)
@@ -76,14 +105,19 @@ export default function App(){
   }
   function record(key:Channel,easing?:Easing){
     pause()
-    updateSelected(l=>setKey(l,key,current,evaluate(l,current)[key],easing))
+    const pending=selectedLayer&&positions.get(selectedLayer.id)
+    updateSelected(l=>setKey(l,key,current,{...evaluate(l,current),...pending}[key],easing))
   }
   function recordPosition(easing:Easing){
     pause()
-    updateSelected(layer=>{
-      const {x,y}=evaluate(layer,current)
-      const withX=atKey(layer,'x',current)?layer:setKey(layer,'x',current,x,easing)
-      return atKey(layer,'y',current)?withX:setKey(withX,'y',current,y,easing)
+    const id=selectedLayer?.id
+    if(!id)return
+    const pending=positions.get(id)
+    updateSelected(layer=>setPositionKey(layer,current,pending??evaluate(layer,current),easing))
+    setPositions(previous=>{
+      const next=new Map(previous)
+      next.delete(id)
+      return next
     })
   }
   function erase(key:Channel){
@@ -182,7 +216,7 @@ export default function App(){
         </div>
         <div className="viewport">
           <div className="canvas-fit" style={{'--ratio':project.width/project.height,'--zoom':zoom/100} as React.CSSProperties}>
-            <Canvas project={project} layers={canvasDraft??canvasLayers} selected={selected} time={current} grid={grid} snap={snap} select={select} preview={next=>setCanvasDraft(canvasChange(next,project.layers).map(layer=>evaluate(layer,current)))} finish={finishCanvas} pause={pause}/>
+            <Canvas project={project} layers={canvasDraft??canvasLayers} selected={selected} time={current} grid={grid} snap={snap} select={select} preview={previewCanvas} finish={finishCanvas} pause={pause}/>
           </div>
         </div>
         <div className="viewer-footer">
@@ -200,7 +234,7 @@ export default function App(){
         </div>
       </section>
       <Inspector project={project} layer={selectedLayer} count={selection.length} editLayer={editLayer} editProject={change}
-        time={current} autoKey={autoKey} setAutoKey={setAutoKey} record={record} recordPosition={recordPosition} erase={erase} changeEasing={changeEasing} seek={seek}/>
+        time={current} pendingPosition={selectedLayer&&positions.get(selectedLayer.id)} autoKey={autoKey} setAutoKey={setAutoKey} record={record} recordPosition={recordPosition} erase={erase} changeEasing={changeEasing} seek={seek}/>
     </div>
     <Timeline layers={layers} duration={project.duration} time={current} selected={selected} snap={snap} setSnap={setSnap} seek={seek} pause={pause}
       select={select} toggle={toggle} preview={setDraft} finish={finish}/>

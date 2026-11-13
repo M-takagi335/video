@@ -102,19 +102,31 @@ export function applyLayerEdit(layer:Layer,patch:Partial<Layer>,time:number,auto
   return Object.keys(base).length?{...next,...base}:next
 }
 
-export function applyCanvasEdit(layer:Layer,before:Layer,after:Layer,time:number,auto:boolean):Layer {
-  if(layer.locked)return layer
+export type Position = Pick<Layer,'x'|'y'>
+
+export function setPositionKey(layer:Layer,time:number,position:Position,easing?:Easing):Layer {
+  return setKey(
+    setKey(layer,'x',time,position.x,atKey(layer,'x',time)?.easing??easing),
+    'y',time,position.y,atKey(layer,'y',time)?.easing??easing,
+  )
+}
+
+export function applyCanvasEdit(layer:Layer,before:Layer,after:Layer,time:number,auto:boolean):{layer:Layer;position?:Position;saved?:boolean} {
   const patch:Partial<Layer>={}
   for(const key of channelNames){
-    if(before[key]!==after[key])Object.assign(patch,{[key]:after[key]})
+    if(key!=='x' && key!=='y' && before[key]!==after[key])Object.assign(patch,{[key]:after[key]})
   }
   const next=applyLayerEdit(layer,patch,time,auto)
-  if(auto || !inClip(layer,time))return next
+  if(layer.locked || !inClip(layer,time) || (before.x===after.x && before.y===after.y))return {layer:next}
 
-  // An off-key canvas move translates the animated path without creating keys.
-  const dx=patch.x!==undefined && layer.tracks?.x?.length && !atKey(layer,'x',time)?patch.x-before.x:0
-  const dy=patch.y!==undefined && layer.tracks?.y?.length && !atKey(layer,'y',time)?patch.y-before.y:0
-  return dx || dy?offsetPosition(next,dx,dy):next
+  const position={x:after.x,y:after.y}
+  if(auto || (atKey(layer,'x',time) && atKey(layer,'y',time))){
+    return {layer:setPositionKey(next,time,position),position,saved:true}
+  }
+  if(!layer.tracks?.x?.length && !layer.tracks?.y?.length){
+    return {layer:{...next,...position},position,saved:true}
+  }
+  return {layer:next,position,saved:false}
 }
 
 export function keyTimes(layer:Layer):number[] {
